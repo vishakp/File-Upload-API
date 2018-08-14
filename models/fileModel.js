@@ -6,7 +6,8 @@ var fileSchema = mongoose.Schema({
     type: { type: String, default: ' '},
     path: {type: String, default: ' '},
     Created: {type: Date, default: new Date()},
-    size: {type: Number, default: '0'}
+    size: {type: Number, default: '0'},
+    owner: {type:String, default: ' '}
 },
 {
     timestamps: true

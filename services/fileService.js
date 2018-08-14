@@ -13,3 +13,7 @@ module.exports.listFiles = (query = {}, project = {}) => {
 module.exports.removeFile = (query = {}) => {
    return file.findOneAndRemove(query).lean().exec()
 };
+
+module.exports.updateTitle = (query = {}, update = {}) => {
+    return file.update(query, update).lean().exec();
+}

@@ -1,102 +1,102 @@
 var express = require('express');
 var router = express.Router();
-var multer = require('multer');
-var fileService = require('../services/fileService') 
-var fs = require('fs')
+var userService = require('../services/userService');
+
+var jwt = require('jsonwebtoken');
+var config = require('../config');
+var bcrypt = require('bcrypt');
+var saltRounds = 10;
+
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
   res.render('index', { title: 'Express' });
 });
 
-var storage = multer.diskStorage({
-  destination: (req, file, callback) => {
-    callback(null, './public/uploads');
-  },
-  filename:  (req, file, callback) => {
-    callback(null, Date.now() + '-' + file.originalname.replace(/ \s+/g,''))
-  }
-});
-
-var upload = multer({storage: storage});
-
-router.post('/upload', upload.any(), (req, res) => {
-  
- var recurUpload = (files, result, cb)=>{
-  if(files.length > 0){
-    let file = files.shift()
-    var data = {
-      fileName : file.originalname,
-      title: file.fieldname,
-      type: file.mimetype,
-      path: file.path,
-      size: file.size
-    };
-    fileService.addFile(data).then((_res)=>{
-      
-      let obj ={
-        name: _res.fileName,
-        title: _res.title
-      }
-      result.push(obj)
-      recurUpload(files, result, cb)
-      
-    });
-  }
-  else cb(result)
- } 
-  
-
-  recurUpload(req.files, [], (_result)=>{
-    console.log(_result)
-    res.json({'Status': 'OK', 'Files Uploaded': _result})
-  })
-  
-
- 
-});
-
-router.get('/download/:name?', (req,res) => {
-  
-  console.log(req.params);  
-  if(!req.params.name) {
-  var query = {}
-}else {
-  var query = {
-    title: req.params.name 
-  };
-}
-  fileService.listFiles(query).then((result)=>{
-    // console.log(result);
-    let list = [];
-    result.forEach((file) => {
-      list.push({
-          "title" : file.title,
-          "file_name": file.fileName,
-          "url": file.path
-      })
-    } );
-    res.json(list);
-  });
-  
+//for password bcrypt
 
 
-});
-
-router.delete('/filedelete/:fileName', (req, res) => {
-  console.log(req.params.fileName)
-  let query = {
-    fileName: req.params.fileName
-  }
-  fileService.removeFile(query).then((_result) => {
-    if(!_result){
-      res.json({"status": "Cannot Delete"});
-    }else
-    fs.unlink(_result.path, () => {
-      res.json({"Status": "File deleted", "file_name" : _result.fileName });
-    })
+router.post('/register',  async function(req, res, next) {
     
-  })
-})
+    console.log(req.body.password);
+    console.log(req.body.cpassword);
+try{
+  var check = await userService.getUser({ email: req.body.email });
+  if(check){
+    res.json({"Status": "Failed", "Error": "email already exist"})
+  } else if(req.body.uname === ' ') res.json({"Status": "Failed", "Error": "uname cannot be empty"})
+  else{
+
+    req.body.password = req.body.password.trim();
+    req.body.cpassword = req.body.cpassword.trim();
+
+    if(req.body.password && (req.body.password === req.body.cpassword)){
+      //for save the password in db save the hash value only
+      var hash = await bcrypt.hash(req.body.password, saltRounds);
+        let usr = {
+          uname: req.body.uname,
+          email: req.body.email,
+          password:hash,
+          date: req.body.date
+        };
+
+        var createUser = await userService.createUser(usr)
+        if(createUser) {
+          res.json({"Status": "ok", "UserAdded": createUser.uname })
+        } 
+       
+         }
+      }
+     
+  } catch(e) {
+  
+    console.log(e);
+    res.json({"Error": e})
+  }
+});
+
+
+router.post('/login',async function(req, res, next){
+  try{
+    
+    var userEmail = req.body.email;
+    var userPassword = req.body.password;
+  
+    var user = await userService.getUser({ email: userEmail });
+    console.log("aaa",user)
+    if(user){
+        var oldPassword = user.password;
+       
+            var result = await bcrypt.compare(userPassword, oldPassword);
+            // console.log(res);
+            if(result){
+            console.log("bbb",result);
+            var token = jwt.sign({ name: user.uname , email:user.email}, config.secret);
+            console.log(token);
+            res.cookie('token', token, { signed: true });
+            res.json({"Status": "OK"});
+           } else{ 
+            res.json({"Error": "Wrong Password"})
+             }
+      } else{
+        res.json({"Error": "User not found"})
+      }
+  } catch(e){
+    console.log(e)
+    res.json({"Error": e})
+  }
+
+});
+
+router.get('/logout',function(req, res, next){
+  try{
+    res.clearCookie('token');
+    res.json({"Status": "ok"})
+  } catch(e){
+    console.log(e);
+  }
+  
+});
+
 
 module.exports = router;
